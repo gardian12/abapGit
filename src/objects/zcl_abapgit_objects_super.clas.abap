@@ -24,13 +24,6 @@ CLASS zcl_abapgit_objects_super DEFINITION PUBLIC ABSTRACT.
     DATA ms_item TYPE zif_abapgit_definitions=>ty_item .
     DATA mv_language TYPE spras .
 
-    METHODS check_timestamp
-      IMPORTING
-        !iv_timestamp     TYPE timestamp
-        !iv_date          TYPE d
-        !iv_time          TYPE t
-      RETURNING
-        VALUE(rv_changed) TYPE abap_bool .
     METHODS get_metadata
       RETURNING
         VALUE(rs_metadata) TYPE zif_abapgit_definitions=>ty_metadata .
@@ -64,14 +57,14 @@ CLASS zcl_abapgit_objects_super DEFINITION PUBLIC ABSTRACT.
         !iv_package TYPE devclass .
     METHODS serialize_longtexts
       IMPORTING
-        !io_xml         TYPE REF TO zcl_abapgit_xml_output
+        !ii_xml         TYPE REF TO zif_abapgit_xml_output
         !iv_longtext_id TYPE dokil-id OPTIONAL
-        !it_dokil       TYPE zif_abapgit_definitions=>tty_dokil OPTIONAL
+        !it_dokil       TYPE zif_abapgit_definitions=>ty_dokil_tt OPTIONAL
       RAISING
         zcx_abapgit_exception .
     METHODS deserialize_longtexts
       IMPORTING
-        !io_xml TYPE REF TO zcl_abapgit_xml_input
+        !ii_xml TYPE REF TO zif_abapgit_xml_input
       RAISING
         zcx_abapgit_exception .
     METHODS delete_longtexts
@@ -97,27 +90,6 @@ ENDCLASS.
 
 
 CLASS ZCL_ABAPGIT_OBJECTS_SUPER IMPLEMENTATION.
-
-
-  METHOD check_timestamp.
-
-    DATA: lv_ts TYPE timestamp.
-
-    IF sy-subrc = 0 AND iv_date IS NOT INITIAL AND iv_time IS NOT INITIAL.
-      cl_abap_tstmp=>systemtstmp_syst2utc(
-        EXPORTING syst_date = iv_date
-                  syst_time = iv_time
-        IMPORTING utc_tstmp = lv_ts ).
-      IF lv_ts < iv_timestamp.
-        rv_changed = abap_false. " Unchanged
-      ELSE.
-        rv_changed = abap_true.
-      ENDIF.
-    ELSE. " Not found? => changed
-      rv_changed = abap_true.
-    ENDIF.
-
-  ENDMETHOD.
 
 
   METHOD constructor.
@@ -226,7 +198,7 @@ CLASS ZCL_ABAPGIT_OBJECTS_SUPER IMPLEMENTATION.
   METHOD deserialize_longtexts.
 
     zcl_abapgit_factory=>get_longtexts( )->deserialize(
-        io_xml             = io_xml
+        ii_xml             = ii_xml
         iv_master_language = mv_language ).
 
   ENDMETHOD.
@@ -359,7 +331,7 @@ CLASS ZCL_ABAPGIT_OBJECTS_SUPER IMPLEMENTATION.
         iv_object_name = ms_item-obj_name
         iv_longtext_id = iv_longtext_id
         it_dokil       = it_dokil
-        io_xml         = io_xml  ).
+        ii_xml         = ii_xml  ).
 
   ENDMETHOD.
 

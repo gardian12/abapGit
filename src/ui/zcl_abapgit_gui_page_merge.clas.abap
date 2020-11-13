@@ -22,7 +22,7 @@ CLASS zcl_abapgit_gui_page_merge DEFINITION
   PRIVATE SECTION.
 
     DATA mo_repo TYPE REF TO zcl_abapgit_repo_online .
-    DATA mo_merge TYPE REF TO zcl_abapgit_merge .
+    DATA mi_merge TYPE REF TO zif_abapgit_merge .
     CONSTANTS:
       BEGIN OF c_actions,
         merge         TYPE string VALUE 'merge' ##NO_TEXT,
@@ -69,32 +69,32 @@ CLASS ZCL_ABAPGIT_GUI_PAGE_MERGE IMPLEMENTATION.
 
     mo_repo = io_repo.
 
-    io_repo->set_branch_name( |{ zif_abapgit_definitions=>c_git_branch-heads_prefix }{ iv_target }| ).
+    io_repo->select_branch( |{ zif_abapgit_definitions=>c_git_branch-heads_prefix }{ iv_target }| ).
 
-    CREATE OBJECT mo_merge
+    CREATE OBJECT mi_merge TYPE zcl_abapgit_merge
       EXPORTING
         io_repo          = io_repo
         iv_source_branch = iv_source.
-    mo_merge->run( ).
+    mi_merge->run( ).
 
     ms_control-page_title = 'Merge'.
-    ms_control-page_menu  = build_menu( mo_merge->has_conflicts( ) ).
+    ms_control-page_menu  = build_menu( mi_merge->has_conflicts( ) ).
 
   ENDMETHOD.
 
 
   METHOD render_content.
 
-    DATA: ls_merge  TYPE zif_abapgit_definitions=>ty_merge,
+    DATA: ls_merge  TYPE zif_abapgit_merge=>ty_merge,
           lt_files  LIKE ls_merge-stree,
           ls_result LIKE LINE OF ls_merge-result.
 
     FIELD-SYMBOLS: <ls_file> LIKE LINE OF lt_files.
 
-    ls_merge = mo_merge->get_result( ).
+    ls_merge = mi_merge->get_result( ).
 
     "If now exists no conflicts anymore, conflicts button should disappear
-    ms_control-page_menu = build_menu( mo_merge->has_conflicts( ) ).
+    ms_control-page_menu = build_menu( mi_merge->has_conflicts( ) ).
 
     CREATE OBJECT ri_html TYPE zcl_abapgit_html.
 
@@ -199,53 +199,45 @@ CLASS ZCL_ABAPGIT_GUI_PAGE_MERGE IMPLEMENTATION.
 
   METHOD zif_abapgit_gui_event_handler~on_event.
 
-    CASE iv_action.
+    CASE ii_event->mv_action.
       WHEN c_actions-merge.
-        IF mo_merge->has_conflicts( ) = abap_true.
+        IF mi_merge->has_conflicts( ) = abap_true.
           zcx_abapgit_exception=>raise( 'conflicts exists' ).
         ENDIF.
 
-        IF mo_merge->get_result( )-stage->count( ) = 0.
+        IF mi_merge->get_result( )-stage->count( ) = 0.
           zcx_abapgit_exception=>raise( 'nothing to merge' ).
         ENDIF.
 
         IF mo_repo->get_local_settings( )-code_inspector_check_variant IS NOT INITIAL.
 
-          CREATE OBJECT ei_page TYPE zcl_abapgit_gui_page_code_insp
+          CREATE OBJECT rs_handled-page TYPE zcl_abapgit_gui_page_code_insp
             EXPORTING
               io_repo  = mo_repo
-              io_stage = mo_merge->get_result( )-stage.
+              io_stage = mi_merge->get_result( )-stage.
 
         ELSE.
 
-          CREATE OBJECT ei_page TYPE zcl_abapgit_gui_page_commit
+          CREATE OBJECT rs_handled-page TYPE zcl_abapgit_gui_page_commit
             EXPORTING
               io_repo  = mo_repo
-              io_stage = mo_merge->get_result( )-stage.
+              io_stage = mi_merge->get_result( )-stage.
 
         ENDIF.
 
-        ev_state = zcl_abapgit_gui=>c_event_state-new_page.
+        rs_handled-state = zcl_abapgit_gui=>c_event_state-new_page.
 
       WHEN c_actions-res_conflicts.
 
-        CREATE OBJECT ei_page TYPE zcl_abapgit_gui_page_merge_res
+        CREATE OBJECT rs_handled-page TYPE zcl_abapgit_gui_page_merge_res
           EXPORTING
             io_repo       = mo_repo
             io_merge_page = me
-            io_merge      = mo_merge.
-        ev_state = zcl_abapgit_gui=>c_event_state-new_page.
+            io_merge      = mi_merge.
+        rs_handled-state = zcl_abapgit_gui=>c_event_state-new_page.
 
       WHEN OTHERS.
-        super->zif_abapgit_gui_event_handler~on_event(
-          EXPORTING
-            iv_action    = iv_action
-            iv_getdata   = iv_getdata
-            it_postdata  = it_postdata
-          IMPORTING
-            ei_page      = ei_page
-            ev_state     = ev_state ).
-
+        rs_handled = super->zif_abapgit_gui_event_handler~on_event( ii_event ).
     ENDCASE.
 
   ENDMETHOD.

@@ -6,8 +6,10 @@ CLASS zcl_abapgit_object_ddls DEFINITION PUBLIC INHERITING FROM zcl_abapgit_obje
 
   PROTECTED SECTION.
     METHODS open_adt_stob
-      IMPORTING iv_ddls_name TYPE tadir-obj_name
-      RAISING   zcx_abapgit_exception.
+      IMPORTING
+        iv_ddls_name TYPE tadir-obj_name
+      RAISING
+        zcx_abapgit_exception.
 
   PRIVATE SECTION.
     METHODS is_baseinfo_supported
@@ -20,7 +22,7 @@ ENDCLASS.
 
 
 
-CLASS ZCL_ABAPGIT_OBJECT_DDLS IMPLEMENTATION.
+CLASS zcl_abapgit_object_ddls IMPLEMENTATION.
 
 
   METHOD is_baseinfo_supported.
@@ -98,6 +100,20 @@ CLASS ZCL_ABAPGIT_OBJECT_DDLS IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD read_baseinfo.
+
+    TRY.
+        rv_baseinfo_string = mo_files->read_string( 'baseinfo' ).
+
+      CATCH zcx_abapgit_exception.
+        " File not found. That's ok, as the object could have been created in a
+        " system where baseinfo wasn't supported.
+        RETURN.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
   METHOD zif_abapgit_object~changed_by.
 
     DATA: lo_ddl   TYPE REF TO object,
@@ -142,23 +158,39 @@ CLASS ZCL_ABAPGIT_OBJECT_DDLS IMPLEMENTATION.
 
   METHOD zif_abapgit_object~delete.
 
-    DATA: lo_ddl   TYPE REF TO object,
-          lx_error TYPE REF TO cx_root.
+    DATA:
+      lt_deltab TYPE TABLE OF dcdeltb,
+      ls_deltab TYPE dcdeltb,
+      lt_gentab TYPE TABLE OF dcgentb,
+      lv_rc     TYPE sy-subrc.
 
+    " CL_DD_DDL_HANDLER->DELETE does not work for CDS views that reference other views
+    " To drop any views regardless of reference, we use delnoref = false
+    ls_deltab-objtyp  = 'DDLS'.
+    ls_deltab-objname = ms_item-obj_name.
+    APPEND ls_deltab TO lt_deltab.
 
-    CALL METHOD ('CL_DD_DDL_HANDLER_FACTORY')=>('CREATE')
-      RECEIVING
-        handler = lo_ddl.
-
-    TRY.
-        CALL METHOD lo_ddl->('IF_DD_DDL_HANDLER~DELETE')
-          EXPORTING
-            name = ms_item-obj_name.
-      CATCH cx_root INTO lx_error.
-        zcx_abapgit_exception=>raise(
-          iv_text     = |DDLS, { ms_item-obj_name } { lx_error->get_text( ) }|
-          ix_previous = lx_error ).
-    ENDTRY.
+    CALL FUNCTION 'DD_MASS_ACT_C3'
+      EXPORTING
+        ddmode         = 'O'
+        inactive       = abap_true
+        write_log      = abap_false
+        delall         = abap_true
+        delnoref       = abap_false
+        prid           = -1
+      IMPORTING
+        act_rc         = lv_rc
+      TABLES
+        gentab         = lt_gentab
+        deltab         = lt_deltab
+      EXCEPTIONS
+        access_failure = 1
+        no_objects     = 2
+        locked         = 3
+        OTHERS         = 4.
+    IF sy-subrc <> 0.
+      zcx_abapgit_exception=>raise_t100( ).
+    ENDIF.
 
   ENDMETHOD.
 
@@ -257,14 +289,9 @@ CLASS ZCL_ABAPGIT_OBJECT_DDLS IMPLEMENTATION.
         CALL METHOD lo_ddl->('IF_DD_DDL_HANDLER~READ')
           EXPORTING
             name      = ms_item-obj_name
-            get_state = 'A'
           IMPORTING
             got_state = lv_state.
-        IF lv_state IS INITIAL.
-          rv_bool = abap_false.
-        ELSE.
-          rv_bool = abap_true.
-        ENDIF.
+        rv_bool = boolc( NOT lv_state IS INITIAL ).
       CATCH cx_root.
         rv_bool = abap_false.
     ENDTRY.
@@ -318,7 +345,7 @@ CLASS ZCL_ABAPGIT_OBJECT_DDLS IMPLEMENTATION.
 
     CASE lv_ddtypekind.
       WHEN 'STOB'.
-        me->open_adt_stob( ms_item-obj_name ).
+        open_adt_stob( ms_item-obj_name ).
       WHEN OTHERS.
         zcx_abapgit_exception=>raise( 'DDLS Jump Error' ).
     ENDCASE.
@@ -419,19 +446,4 @@ CLASS ZCL_ABAPGIT_OBJECT_DDLS IMPLEMENTATION.
                  ig_data = <lg_data> ).
 
   ENDMETHOD.
-
-
-  METHOD read_baseinfo.
-
-    TRY.
-        rv_baseinfo_string = mo_files->read_string( 'baseinfo' ).
-
-      CATCH zcx_abapgit_exception.
-        " File not found. That's ok, as the object could have been created in a
-        " system where baseinfo wasn't supported.
-        RETURN.
-    ENDTRY.
-
-  ENDMETHOD.
-
 ENDCLASS.

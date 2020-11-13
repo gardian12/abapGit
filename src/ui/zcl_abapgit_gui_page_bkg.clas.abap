@@ -140,16 +140,16 @@ CLASS ZCL_ABAPGIT_GUI_PAGE_BKG IMPLEMENTATION.
   METHOD read_persist.
 
     DATA: lo_per TYPE REF TO zcl_abapgit_persist_background,
-          lt_per TYPE zcl_abapgit_persist_background=>tt_background.
+          lt_per TYPE zcl_abapgit_persist_background=>ty_background_keys.
 
 
     CREATE OBJECT lo_per.
-    lt_per = lo_per->list( ).
 
-    READ TABLE lt_per INTO rs_persist WITH KEY key = io_repo->get_key( ).
-    IF sy-subrc <> 0.
-      CLEAR rs_persist.
-    ENDIF.
+    TRY.
+        rs_persist = lo_per->get_by_key( io_repo->get_key( ) ).
+      CATCH zcx_abapgit_not_found.
+        CLEAR rs_persist.
+    ENDTRY.
 
   ENDMETHOD.
 
@@ -212,7 +212,7 @@ CLASS ZCL_ABAPGIT_GUI_PAGE_BKG IMPLEMENTATION.
 
   METHOD render_methods.
 
-    DATA: lt_methods TYPE zcl_abapgit_background=>ty_methods_tt,
+    DATA: lt_methods TYPE zcl_abapgit_background=>ty_methods,
           ls_method  LIKE LINE OF lt_methods,
           lv_checked TYPE string.
 
@@ -307,19 +307,15 @@ CLASS ZCL_ABAPGIT_GUI_PAGE_BKG IMPLEMENTATION.
 
   METHOD zif_abapgit_gui_event_handler~on_event.
 
-    CASE iv_action.
+    DATA ls_fields TYPE zcl_abapgit_persist_background=>ty_background.
+
+    CASE ii_event->mv_action.
       WHEN zif_abapgit_definitions=>c_action-bg_update.
-        update( decode( iv_getdata ) ).
-        ev_state = zcl_abapgit_gui=>c_event_state-re_render.
+        ls_fields = decode( ii_event->mv_getdata ).
+        update( ls_fields ).
+        rs_handled-state = zcl_abapgit_gui=>c_event_state-re_render.
       WHEN OTHERS.
-        super->zif_abapgit_gui_event_handler~on_event(
-          EXPORTING
-            iv_action    = iv_action
-            iv_getdata   = iv_getdata
-            it_postdata  = it_postdata
-          IMPORTING
-            ei_page      = ei_page
-            ev_state     = ev_state ).
+        rs_handled = super->zif_abapgit_gui_event_handler~on_event( ii_event ).
     ENDCASE.
 
   ENDMETHOD.

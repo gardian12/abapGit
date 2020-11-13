@@ -9,10 +9,12 @@ order: 30
 [Git client for ABAP – alpha release](http://blogs.sap.com/2014/07/17/git-client-for-abap-alpha-release/)
 -Lars Hvam
 
-### 2016
+### 2015
 
 [How can I use Git and GitHub for SAP software development?](http://searchsap.techtarget.com/answer/How-can-I-use-Git-and-GitHub-for-SAP-software-development)
 -Ethan Jewett
+
+### 2016
 
 [Implementing modern practices in an ABAP development shop](http://searchsap.techtarget.com/tip/Implementing-modern-practices-in-an-ABAP-development-shop)
 -Ethan Jewett
@@ -130,3 +132,9 @@ Michael Pang
 [The journey to Git-based ABAP development: Part 2](https://blogs.sap.com/2020/03/31/the-journey-to-git-based-abap-development-part-2/), Marcello Urbani
 
 [The journey to Git-based ABAP development: Part 3](https://blogs.sap.com/2020/05/21/the-journey-to-git-based-abap-development-part-3/), Marcello Urbani
+
+[Inside Steampunk – Vital parts of Steampunk’s abapGit](https://blogs.sap.com/2020/10/07/inside-steampunk-vital-parts-of-steampunks-abapgit/), Andre Becker
+
+[Automatically generate issues from source code](https://blogs.sap.com/2020/10/20/automatically-generated-issues-from-source-code-abapgit/), Enno Wulff
+
+[CTS is beautiful](https://blogs.sap.com/2020/11/05/cts-is-beautiful/), Lars Hvam

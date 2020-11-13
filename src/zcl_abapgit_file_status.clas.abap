@@ -10,12 +10,19 @@ CLASS zcl_abapgit_file_status DEFINITION
                 ii_log            TYPE REF TO zif_abapgit_log OPTIONAL
       RETURNING VALUE(rt_results) TYPE zif_abapgit_definitions=>ty_results_tt
       RAISING   zcx_abapgit_exception.
+    CLASS-METHODS: identify_object
+        IMPORTING iv_filename TYPE string
+                  iv_path     TYPE string
+                  iv_devclass TYPE devclass OPTIONAL
+                  io_dot      TYPE REF TO zcl_abapgit_dot_abapgit
+        EXPORTING es_item     TYPE zif_abapgit_definitions=>ty_item
+                  ev_is_xml   TYPE abap_bool
+        RAISING   zcx_abapgit_exception.
 
   PROTECTED SECTION.
   PRIVATE SECTION.
 
-    CLASS-METHODS:
-      calculate_status
+    CLASS-METHODS: calculate_status
         IMPORTING iv_devclass       TYPE devclass
                   io_dot            TYPE REF TO zcl_abapgit_dot_abapgit
                   it_local          TYPE zif_abapgit_definitions=>ty_files_item_tt
@@ -44,14 +51,6 @@ CLASS zcl_abapgit_file_status DEFINITION
                   it_items         TYPE zif_abapgit_definitions=>ty_items_ts
                   it_state         TYPE zif_abapgit_definitions=>ty_file_signatures_ts
         RETURNING VALUE(rs_result) TYPE zif_abapgit_definitions=>ty_result
-        RAISING   zcx_abapgit_exception,
-      identify_object
-        IMPORTING iv_filename TYPE string
-                  iv_path     TYPE string
-                  iv_devclass TYPE devclass
-                  io_dot      TYPE REF TO zcl_abapgit_dot_abapgit
-        EXPORTING es_item     TYPE zif_abapgit_definitions=>ty_item
-                  ev_is_xml   TYPE abap_bool
         RAISING   zcx_abapgit_exception,
       get_object_package
         IMPORTING
@@ -206,6 +205,7 @@ CLASS ZCL_ABAPGIT_FILE_STATUS IMPLEMENTATION.
 
     FIELD-SYMBOLS: <ls_remote> LIKE LINE OF it_remote,
                    <ls_result> LIKE LINE OF rt_results,
+                   <ls_state>  LIKE LINE OF it_cur_state,
                    <ls_local>  LIKE LINE OF it_local.
 
 
@@ -237,6 +237,20 @@ CLASS ZCL_ABAPGIT_FILE_STATUS IMPLEMENTATION.
           WITH KEY filename = <ls_local>-file-filename.
         IF sy-subrc = 0 AND <ls_local>-file-sha1 = <ls_remote>-sha1.
           <ls_result>-packmove = abap_true.
+        ELSEIF sy-subrc = 4.
+          " Check if file existed before and was deleted remotely
+          READ TABLE lt_state_idx ASSIGNING <ls_state>
+            WITH KEY path = <ls_local>-file-path filename = <ls_local>-file-filename
+            BINARY SEARCH.
+          IF sy-subrc = 0.
+            IF <ls_local>-file-sha1 = <ls_state>-sha1.
+              <ls_result>-lstate = zif_abapgit_definitions=>c_state-unchanged.
+            ELSE.
+              <ls_result>-lstate = zif_abapgit_definitions=>c_state-modified.
+            ENDIF.
+            <ls_result>-rstate = zif_abapgit_definitions=>c_state-deleted.
+            CLEAR <ls_remote>-sha1. " Mark as processed
+          ENDIF.
         ENDIF.
       ENDIF.
       <ls_result>-inactive = <ls_local>-item-inactive.
@@ -251,7 +265,7 @@ CLASS ZCL_ABAPGIT_FILE_STATUS IMPLEMENTATION.
                        IMPORTING es_item     = ls_item
                                  ev_is_xml   = lv_is_xml ).
 
-      CHECK lv_is_xml = abap_true. " Skip all but obj definitions
+      CHECK lv_is_xml = abap_true. " only object definitions
 
       ls_item-devclass = get_object_package(
         iv_object   = ls_item-obj_type
@@ -263,7 +277,7 @@ CLASS ZCL_ABAPGIT_FILE_STATUS IMPLEMENTATION.
           lv_sub_fetched = abap_true.
           SORT lt_sub_packages BY table_line. "Optimize Read Access
         ENDIF.
-* make sure the package is under the repo main package
+        " Make sure the package is under the repo main package
         READ TABLE lt_sub_packages TRANSPORTING NO FIELDS
           WITH KEY table_line = ls_item-devclass
           BINARY SEARCH.
@@ -292,6 +306,14 @@ CLASS ZCL_ABAPGIT_FILE_STATUS IMPLEMENTATION.
         WITH KEY file-filename = <ls_remote>-filename.
       IF sy-subrc = 0 AND <ls_local>-file-sha1 = <ls_remote>-sha1.
         <ls_result>-packmove = abap_true.
+      ELSEIF sy-subrc = 4.
+        " Check if file existed before and was deleted locally
+        READ TABLE lt_state_idx ASSIGNING <ls_state>
+          WITH KEY path = <ls_remote>-path filename = <ls_remote>-filename
+          BINARY SEARCH.
+        IF sy-subrc = 0.
+          <ls_result>-lstate = zif_abapgit_definitions=>c_state-deleted.
+        ENDIF.
       ENDIF.
     ENDLOOP.
 
@@ -370,9 +392,8 @@ CLASS ZCL_ABAPGIT_FILE_STATUS IMPLEMENTATION.
     FIELD-SYMBOLS: <ls_res1> LIKE LINE OF it_results,
                    <ls_res2> LIKE LINE OF it_results.
 
-
+    " This method just adds messages to the log. No log, nothing to do here
     IF ii_log IS INITIAL.
-* huh?
       RETURN.
     ENDIF.
 

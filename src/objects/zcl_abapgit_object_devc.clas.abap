@@ -12,31 +12,53 @@ CLASS zcl_abapgit_object_devc DEFINITION PUBLIC
                             iv_language TYPE spras.
   PROTECTED SECTION.
   PRIVATE SECTION.
-    METHODS:
-      get_package RETURNING VALUE(ri_package) TYPE REF TO if_package
-                  RAISING   zcx_abapgit_exception,
-      update_pinf_usages IMPORTING ii_package    TYPE REF TO if_package
-                                   it_usage_data TYPE scomppdata
-                         RAISING   zcx_abapgit_exception,
-      set_lock IMPORTING ii_package TYPE REF TO if_package
-                         iv_lock    TYPE abap_bool
-               RAISING   zcx_abapgit_exception,
-      is_empty
-        IMPORTING iv_package_name    TYPE devclass
-        RETURNING VALUE(rv_is_empty) TYPE abap_bool
-        RAISING   zcx_abapgit_exception,
-      load_package
-        IMPORTING iv_package_name   TYPE devclass
-        RETURNING VALUE(ri_package) TYPE REF TO if_package
-        RAISING   zcx_abapgit_exception.
 
-    DATA:
-      mv_local_devclass TYPE devclass.
+    DATA mv_local_devclass TYPE devclass .
+
+    METHODS get_package
+      RETURNING
+        VALUE(ri_package) TYPE REF TO if_package
+      RAISING
+        zcx_abapgit_exception .
+    METHODS update_pinf_usages
+      IMPORTING
+        !ii_package    TYPE REF TO if_package
+        !it_usage_data TYPE scomppdata
+      RAISING
+        zcx_abapgit_exception .
+    METHODS set_lock
+      IMPORTING
+        !ii_package TYPE REF TO if_package
+        !iv_lock    TYPE abap_bool
+      RAISING
+        zcx_abapgit_exception .
+    METHODS is_empty
+      IMPORTING
+        !iv_package_name   TYPE devclass
+      RETURNING
+        VALUE(rv_is_empty) TYPE abap_bool
+      RAISING
+        zcx_abapgit_exception .
+    METHODS load_package
+      IMPORTING
+        !iv_package_name  TYPE devclass
+      RETURNING
+        VALUE(ri_package) TYPE REF TO if_package
+      RAISING
+        zcx_abapgit_exception .
+    METHODS is_local
+      IMPORTING
+        !iv_package_name   TYPE devclass
+      RETURNING
+        VALUE(rv_is_local) TYPE abap_bool .
+    METHODS remove_obsolete_tadir
+      IMPORTING
+        !iv_package_name TYPE devclass .
 ENDCLASS.
 
 
 
-CLASS ZCL_ABAPGIT_OBJECT_DEVC IMPLEMENTATION.
+CLASS zcl_abapgit_object_devc IMPLEMENTATION.
 
 
   METHOD constructor.
@@ -51,7 +73,7 @@ CLASS ZCL_ABAPGIT_OBJECT_DEVC IMPLEMENTATION.
 
 
   METHOD get_package.
-    IF me->zif_abapgit_object~exists( ) = abap_true.
+    IF zif_abapgit_object~exists( ) = abap_true.
       ri_package = load_package( mv_local_devclass ).
     ENDIF.
   ENDMETHOD.
@@ -80,6 +102,19 @@ CLASS ZCL_ABAPGIT_OBJECT_DEVC IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD is_local.
+
+    DATA lv_dlvunit TYPE tdevc-dlvunit.
+
+    SELECT SINGLE dlvunit FROM tdevc INTO lv_dlvunit
+        WHERE devclass = iv_package_name AND intsys <> 'SAP'.
+    IF sy-subrc = 0 AND lv_dlvunit = 'LOCAL'.
+      rv_is_local = abap_true.
+    ENDIF.
+
+  ENDMETHOD.
+
+
   METHOD load_package.
 
     cl_package_factory=>load_package(
@@ -100,6 +135,50 @@ CLASS ZCL_ABAPGIT_OBJECT_DEVC IMPLEMENTATION.
     ELSEIF sy-subrc <> 0.
       zcx_abapgit_exception=>raise_t100( ).
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD remove_obsolete_tadir.
+
+    DATA:
+      lv_pack  TYPE devclass,
+      lt_pack  TYPE STANDARD TABLE OF devclass,
+      ls_tadir TYPE zif_abapgit_definitions=>ty_tadir,
+      lt_tadir TYPE zif_abapgit_definitions=>ty_tadir_tt,
+      ls_item  TYPE zif_abapgit_definitions=>ty_item.
+
+    " TADIR entries must remain for transportable packages
+    IF is_local( iv_package_name ) = abap_false.
+      RETURN.
+    ENDIF.
+
+    " Clean-up sub packages first
+    SELECT devclass FROM tdevc INTO TABLE lt_pack WHERE parentcl = iv_package_name.
+
+    LOOP AT lt_pack INTO lv_pack.
+      remove_obsolete_tadir( lv_pack ).
+    ENDLOOP.
+
+    " Remove TADIR entries for objects that do not exist anymore
+    SELECT * FROM tadir INTO CORRESPONDING FIELDS OF TABLE lt_tadir WHERE devclass = iv_package_name.
+
+    LOOP AT lt_tadir INTO ls_tadir.
+      ls_item-obj_type = ls_tadir-object.
+      ls_item-obj_name = ls_tadir-obj_name.
+
+      IF zcl_abapgit_objects=>exists( ls_item ) = abap_false.
+        CALL FUNCTION 'TR_TADIR_INTERFACE'
+          EXPORTING
+            wi_delete_tadir_entry = abap_true
+            wi_tadir_pgmid        = 'R3TR'
+            wi_tadir_object       = ls_tadir-object
+            wi_tadir_obj_name     = ls_tadir-obj_name
+            wi_test_modus         = abap_false
+          EXCEPTIONS
+            OTHERS                = 1 ##FM_SUBRC_OK.
+      ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -263,6 +342,8 @@ CLASS ZCL_ABAPGIT_OBJECT_DEVC IMPLEMENTATION.
 
     lv_package = ms_item-obj_name.
 
+    remove_obsolete_tadir( lv_package ).
+
     IF is_empty( lv_package ) = abap_true.
 
       li_package = load_package( lv_package ).
@@ -391,18 +472,18 @@ CLASS ZCL_ABAPGIT_OBJECT_DEVC IMPLEMENTATION.
 * korrflag
 * dlvunit
 * parentcl
+* cli_check
+* intprefx
     ls_data_sign-ctext            = abap_true.
     ls_data_sign-as4user          = abap_true.
     ls_data_sign-pdevclass        = abap_true.
     ls_data_sign-comp_posid       = abap_true.
     ls_data_sign-component        = abap_true.
     ls_data_sign-perminher        = abap_true.
-    ls_data_sign-intfprefx        = abap_true.
     ls_data_sign-packtype         = abap_true.
     ls_data_sign-restricted       = abap_true.
     ls_data_sign-mainpack         = abap_true.
     ls_data_sign-srv_check        = abap_true.
-    ls_data_sign-cli_check        = abap_true.
     ls_data_sign-ext_alias        = abap_true.
     ls_data_sign-project_guid     = abap_true.
     ls_data_sign-project_id       = abap_true.
@@ -635,6 +716,10 @@ CLASS ZCL_ABAPGIT_OBJECT_DEVC IMPLEMENTATION.
     CLEAR: ls_package_data-comp_text,
            ls_package_data-dlvu_text,
            ls_package_data-layer_text.
+
+    " Clear obsolete fields
+    CLEAR: ls_package_data-intfprefx,
+           ls_package_data-cli_check.
 
     ASSIGN COMPONENT 'TRANSLATION_DEPTH_TEXT'
            OF STRUCTURE ls_package_data

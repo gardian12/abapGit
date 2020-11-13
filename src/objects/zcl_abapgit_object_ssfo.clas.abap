@@ -39,7 +39,7 @@ ENDCLASS.
 
 
 
-CLASS ZCL_ABAPGIT_OBJECT_SSFO IMPLEMENTATION.
+CLASS zcl_abapgit_object_ssfo IMPLEMENTATION.
 
 
   METHOD code_item_section_handling.
@@ -82,7 +82,7 @@ CLASS ZCL_ABAPGIT_OBJECT_SSFO IMPLEMENTATION.
         old TYPE string,
         new TYPE string,
       END OF ty_id_mapping,
-      tty_id_mapping TYPE HASHED TABLE OF ty_id_mapping
+      ty_id_mappings TYPE HASHED TABLE OF ty_id_mapping
                           WITH UNIQUE KEY old.
 
     DATA: lv_name       TYPE string,
@@ -90,7 +90,7 @@ CLASS ZCL_ABAPGIT_OBJECT_SSFO IMPLEMENTATION.
           li_node       TYPE REF TO if_ixml_node,
           li_attr       TYPE REF TO if_ixml_named_node_map,
           li_iterator   TYPE REF TO if_ixml_node_iterator,
-          lt_id_mapping TYPE tty_id_mapping,
+          lt_id_mapping TYPE ty_id_mappings,
           ls_id_mapping LIKE LINE OF lt_id_mapping.
 
     li_iterator = ii_xml_doc->create_iterator( ).
@@ -146,20 +146,20 @@ CLASS ZCL_ABAPGIT_OBJECT_SSFO IMPLEMENTATION.
 
     DATA: ls_range_node_code TYPE LINE OF ty_string_range.
 
-    IF me->gt_range_node_codes IS INITIAL.
+    IF gt_range_node_codes IS INITIAL.
       ls_range_node_code-sign   = 'I'.
       ls_range_node_code-option = 'EQ'.
       ls_range_node_code-low    = 'CODE'.
-      INSERT ls_range_node_code INTO TABLE me->gt_range_node_codes.
+      INSERT ls_range_node_code INTO TABLE gt_range_node_codes.
       ls_range_node_code-low    = 'GTYPES'.
-      INSERT ls_range_node_code INTO TABLE me->gt_range_node_codes.
+      INSERT ls_range_node_code INTO TABLE gt_range_node_codes.
       ls_range_node_code-low    = 'GCODING'.
-      INSERT ls_range_node_code INTO TABLE me->gt_range_node_codes.
+      INSERT ls_range_node_code INTO TABLE gt_range_node_codes.
       ls_range_node_code-low    = 'FCODING'.
-      INSERT ls_range_node_code INTO TABLE me->gt_range_node_codes.
+      INSERT ls_range_node_code INTO TABLE gt_range_node_codes.
     ENDIF.
 
-    rt_range_node_codes = me->gt_range_node_codes.
+    rt_range_node_codes = gt_range_node_codes.
 
   ENDMETHOD.
 

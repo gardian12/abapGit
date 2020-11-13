@@ -10,15 +10,15 @@ CLASS zcl_abapgit_object_prog DEFINITION PUBLIC INHERITING FROM zcl_abapgit_obje
              language TYPE langu,
              textpool TYPE zif_abapgit_definitions=>ty_tpool_tt,
            END OF ty_tpool_i18n,
-           tt_tpool_i18n TYPE STANDARD TABLE OF ty_tpool_i18n.
+           ty_tpools_i18n TYPE STANDARD TABLE OF ty_tpool_i18n.
     CONSTANTS: c_longtext_id_prog TYPE dokil-id VALUE 'RE'.
 
     METHODS:
       serialize_texts
-        IMPORTING io_xml TYPE REF TO zcl_abapgit_xml_output
+        IMPORTING ii_xml TYPE REF TO zif_abapgit_xml_output
         RAISING   zcx_abapgit_exception,
       deserialize_texts
-        IMPORTING io_xml TYPE REF TO zcl_abapgit_xml_input
+        IMPORTING ii_xml TYPE REF TO zif_abapgit_xml_input
         RAISING   zcx_abapgit_exception,
       is_program_locked
         RETURNING
@@ -30,18 +30,18 @@ ENDCLASS.
 
 
 
-CLASS ZCL_ABAPGIT_OBJECT_PROG IMPLEMENTATION.
+CLASS zcl_abapgit_object_prog IMPLEMENTATION.
 
 
   METHOD deserialize_texts.
 
-    DATA: lt_tpool_i18n TYPE tt_tpool_i18n,
+    DATA: lt_tpool_i18n TYPE ty_tpools_i18n,
           lt_tpool      TYPE textpool_table.
 
     FIELD-SYMBOLS <ls_tpool> LIKE LINE OF lt_tpool_i18n.
 
 
-    io_xml->read( EXPORTING iv_name = 'I18N_TPOOL'
+    ii_xml->read( EXPORTING iv_name = 'I18N_TPOOL'
                   CHANGING  cg_data = lt_tpool_i18n ).
 
     LOOP AT lt_tpool_i18n ASSIGNING <ls_tpool>.
@@ -64,18 +64,18 @@ CLASS ZCL_ABAPGIT_OBJECT_PROG IMPLEMENTATION.
 
   METHOD serialize_texts.
 
-    DATA: lt_tpool_i18n TYPE tt_tpool_i18n,
+    DATA: lt_tpool_i18n TYPE ty_tpools_i18n,
           lt_tpool      TYPE textpool_table.
 
     FIELD-SYMBOLS <ls_tpool> LIKE LINE OF lt_tpool_i18n.
 
-    IF io_xml->i18n_params( )-serialize_master_lang_only = abap_true.
+    IF ii_xml->i18n_params( )-serialize_master_lang_only = abap_true.
       RETURN.
     ENDIF.
 
     " Table d010tinf stores info. on languages in which program is maintained
     " Select all active translations of program texts
-    " Skip master language - it was already serialized
+    " Skip main language - it was already serialized
     SELECT DISTINCT language
       INTO CORRESPONDING FIELDS OF TABLE lt_tpool_i18n
       FROM d010tinf
@@ -92,7 +92,7 @@ CLASS ZCL_ABAPGIT_OBJECT_PROG IMPLEMENTATION.
     ENDLOOP.
 
     IF lines( lt_tpool_i18n ) > 0.
-      io_xml->add( iv_name = 'I18N_TPOOL'
+      ii_xml->add( iv_name = 'I18N_TPOOL'
                    ig_data = lt_tpool_i18n ).
     ENDIF.
 
@@ -126,8 +126,10 @@ CLASS ZCL_ABAPGIT_OBJECT_PROG IMPLEMENTATION.
         permission_failure         = 3
         reject_deletion            = 4
         OTHERS                     = 5.
-
-    IF sy-subrc <> 0.
+    IF sy-subrc = 2.
+      " Drop also any inactive code that is left in REPOSRC
+      DELETE REPORT lv_program ##SUBRC_OK.
+    ELSEIF sy-subrc <> 0.
       zcx_abapgit_exception=>raise( |Error from RS_DELETE_PROGRAM: { sy-subrc }| ).
     ENDIF.
 
@@ -187,8 +189,7 @@ CLASS ZCL_ABAPGIT_OBJECT_PROG IMPLEMENTATION.
     DATA: lv_progname TYPE reposrc-progname.
 
     SELECT SINGLE progname FROM reposrc INTO lv_progname
-      WHERE progname = ms_item-obj_name
-      AND r3state = 'A'.
+      WHERE progname = ms_item-obj_name.
     rv_bool = boolc( sy-subrc = 0 ).
 
   ENDMETHOD.
@@ -252,7 +253,7 @@ CLASS ZCL_ABAPGIT_OBJECT_PROG IMPLEMENTATION.
     " Texts serializing (translations)
     serialize_texts( io_xml ).
 
-    serialize_longtexts( io_xml         = io_xml
+    serialize_longtexts( ii_xml         = io_xml
                          iv_longtext_id = c_longtext_id_prog ).
 
   ENDMETHOD.

@@ -52,13 +52,6 @@ CLASS zcl_abapgit_gui_page_boverview DEFINITION
         VALUE(ri_html) TYPE REF TO zif_abapgit_html
       RAISING
         zcx_abapgit_exception .
-    METHODS decode_merge
-      IMPORTING
-        !it_postdata    TYPE cnht_post_data_tab
-      RETURNING
-        VALUE(rs_merge) TYPE ty_merge
-      RAISING
-        zcx_abapgit_exception .
     METHODS build_menu
       RETURNING
         VALUE(ro_menu) TYPE REF TO zcl_abapgit_html_toolbar .
@@ -243,29 +236,6 @@ CLASS ZCL_ABAPGIT_GUI_PAGE_BOVERVIEW IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD decode_merge.
-
-    DATA: lv_string TYPE string,
-          lt_fields TYPE tihttpnvp.
-
-    FIELD-SYMBOLS: <ls_field> LIKE LINE OF lt_fields.
-
-
-    lv_string = zcl_abapgit_utils=>translate_postdata( it_postdata ).
-
-    lt_fields = zcl_abapgit_html_action_utils=>parse_fields( lv_string ).
-
-    READ TABLE lt_fields ASSIGNING <ls_field> WITH KEY name = 'source'.
-    ASSERT sy-subrc = 0.
-    rs_merge-source = <ls_field>-value.
-
-    READ TABLE lt_fields ASSIGNING <ls_field> WITH KEY name = 'target'.
-    ASSERT sy-subrc = 0.
-    rs_merge-target = <ls_field>-value.
-
-  ENDMETHOD.
-
-
   METHOD escape_branch.
 
     rv_string = iv_string.
@@ -411,36 +381,30 @@ CLASS ZCL_ABAPGIT_GUI_PAGE_BOVERVIEW IMPLEMENTATION.
           lo_merge TYPE REF TO zcl_abapgit_gui_page_merge.
 
 
-    CASE iv_action.
+    CASE ii_event->mv_action.
       WHEN c_actions-refresh.
         refresh( ).
-        ev_state = zcl_abapgit_gui=>c_event_state-re_render.
+        rs_handled-state = zcl_abapgit_gui=>c_event_state-re_render.
       WHEN c_actions-uncompress.
         mv_compress = abap_false.
         refresh( ).
-        ev_state = zcl_abapgit_gui=>c_event_state-re_render.
+        rs_handled-state = zcl_abapgit_gui=>c_event_state-re_render.
       WHEN c_actions-compress.
         mv_compress = abap_true.
         refresh( ).
-        ev_state = zcl_abapgit_gui=>c_event_state-re_render.
+        rs_handled-state = zcl_abapgit_gui=>c_event_state-re_render.
       WHEN c_actions-merge.
-        ls_merge = decode_merge( it_postdata ).
+        ls_merge-source = ii_event->form_data( )->get( 'source' ).
+        ls_merge-target = ii_event->form_data( )->get( 'target' ).
         CREATE OBJECT lo_merge
           EXPORTING
             io_repo   = mo_repo
             iv_source = ls_merge-source
             iv_target = ls_merge-target.
-        ei_page = lo_merge.
-        ev_state = zcl_abapgit_gui=>c_event_state-new_page.
+        rs_handled-page = lo_merge.
+        rs_handled-state = zcl_abapgit_gui=>c_event_state-new_page.
       WHEN OTHERS.
-        super->zif_abapgit_gui_event_handler~on_event(
-          EXPORTING
-            iv_action    = iv_action
-            iv_getdata   = iv_getdata
-            it_postdata  = it_postdata
-          IMPORTING
-            ei_page      = ei_page
-            ev_state     = ev_state ).
+        rs_handled = super->zif_abapgit_gui_event_handler~on_event( ii_event ).
     ENDCASE.
 
   ENDMETHOD.
